@@ -36,24 +36,43 @@ class SegmentationDataset(Dataset):
         self.transform = transform
         # target_transform is now handled internally
 
+    # 该方案在遇到最大值 ≤1 的图像时，不会重新二值化，因此输出图像可能保留 0/1 值，而不是要求的 0/255。
+    # 这可能导致后续处理出错（例如某些算法硬性要求像素值为 0 或 255）。
+    # def _fix_palette_label(self, label_img):
+    #     """Fix palette mode label conversion to preserve binary values"""
+    #
+    #     if label_img.mode == 'P':
+    #         # Convert palette image directly to numpy array to preserve indices
+    #         label_np = np.array(label_img)
+    #         # Ensure binary values and scale to 0-255 for PIL compatibility
+    #         label_np = (label_np > 0).astype(np.uint8) * 255
+    #         label_fixed = Image.fromarray(label_np, mode='L')
+    #     else:
+    #         # For non-palette images, convert normally
+    #         label_fixed = label_img.convert('L')
+    #         label_np = np.array(label_fixed)
+    #         if label_np.max() > 1:
+    #             label_np = (label_np > 127).astype(np.uint8) * 255
+    #             label_fixed = Image.fromarray(label_np, mode='L')
+    #
+    #     return label_fixed
+
     def _fix_palette_label(self, label_img):
-        """Fix palette mode label conversion to preserve binary values"""
-
+        """
+        统一将各种格式的掩膜转换为二值图像（前景255，背景0）
+        支持：调色板模式、灰度图、0-1二值图、0-255灰度图
+        """
+        # 转换为灰度图数组
         if label_img.mode == 'P':
-            # Convert palette image directly to numpy array to preserve indices
             label_np = np.array(label_img)
-            # Ensure binary values and scale to 0-255 for PIL compatibility
-            label_np = (label_np > 0).astype(np.uint8) * 255
-            label_fixed = Image.fromarray(label_np, mode='L')
         else:
-            # For non-palette images, convert normally
-            label_fixed = label_img.convert('L')
-            label_np = np.array(label_fixed)
-            if label_np.max() > 1:
-                label_np = (label_np > 127).astype(np.uint8) * 255
-                label_fixed = Image.fromarray(label_np, mode='L')
+            # 其他模式（RGB、RGBA、L等）都先转为L模式
+            label_img = label_img.convert('L')
+            label_np = np.array(label_img)
 
-        return label_fixed
+        # 二值化：所有大于0的像素视为前景
+        label_np = (label_np > 0).astype(np.uint8) * 255
+        return Image.fromarray(label_np, mode='L')
 
     def __len__(self):
         return len(self.data_pairs)
@@ -351,8 +370,6 @@ class CombinedLoss(nn.Module):
 
 
 def calculate_metrics(pred, target, threshold=0.5):
-    """Calculate IoU and Dice metrics"""
-
     pred_binary = (pred > threshold).float()
     target_binary = target.float()
 
@@ -364,17 +381,17 @@ def calculate_metrics(pred, target, threshold=0.5):
     target_sum = target_flat.sum()
     union = pred_sum + target_sum - intersection
 
-    # IoU calculation
+    # IoU
     if union > 0:
         iou = intersection / union
     else:
-        iou = torch.tensor(1.0 if intersection == 0 else 0.0)
+        iou = torch.tensor(0.0)
 
-    # Dice calculation
+    # Dice
     if pred_sum + target_sum > 0:
         dice = (2.0 * intersection) / (pred_sum + target_sum)
     else:
-        dice = torch.tensor(1.0 if intersection == 0 else 0.0)
+        dice = torch.tensor(0.0)
 
     return iou.item(), dice.item()
 
@@ -433,8 +450,10 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
             total_dice_loss / n_batches)
 
 
+
 def validate_epoch(model, val_loader, criterion, device):
     """Validate for one epoch"""
+
     model.eval()
     total_loss = 0.0
     total_iou = 0.0
@@ -477,6 +496,7 @@ def validate_epoch(model, val_loader, criterion, device):
                 })
 
     n_batches = len(val_loader)
+
     return (total_loss / n_batches,
             total_iou / n_batches,
             total_dice / n_batches,

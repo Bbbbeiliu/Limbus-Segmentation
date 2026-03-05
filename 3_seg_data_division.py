@@ -8,7 +8,7 @@ from pypinyin import lazy_pinyin  # 用于中文姓名拼音转换
 # D盘数据集配置（按数字文件夹编号划分）
 D_DATA_ROOT = r"D:\project\segmentation\data"
 D_MASK_ROOT = r"D:\project\segmentation\mask_seg"
-D_TRAIN_START = 20        # D盘训练集起始文件夹编号
+D_TRAIN_START = 51       # D盘训练集起始文件夹编号
 D_TRAIN_END = 105         # D盘训练集结束文件夹编号
 D_VAL_START = 106         # D盘验证集起始文件夹编号
 D_VAL_END = 109           # D盘验证集结束文件夹编号
